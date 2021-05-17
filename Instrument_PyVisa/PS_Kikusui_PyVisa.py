@@ -1,11 +1,34 @@
 from Instrument_PyVisa.Basic_PyVisa import Basic_PyVisa
-import time
 
 
 # Only Kikusui PBZ20-20 specified PyVISA command should be placed here.
 class Kikusui_PyVisa(Basic_PyVisa):
     def __init__(self):
         super().__init__()
+
+    def connect_device(self, target_resource_instr):
+        try:
+            self.inst = self.rm.open_resource(target_resource_instr)
+            print(f'Connected -->  {self.inst.query("*IDN?")}')
+            return True
+
+        # except pyvisa.VisaIOError as error:
+        except:
+            # print(error)
+            print("Error 002: \n"
+                  "- Incorrect equipment used/ no connection detection.\n"
+                  "- Please make sure the equipment is properly connected")
+            return False
+
+    def disconnect_device(self):
+        try:
+            self.inst.close()
+            print("Session close")
+        except:
+            print("Error 003: Unable to close the session")
+
+    def display_session(self):
+        return self.inst.session
 
     def set_polarity(self, polarity="UNIP"):
         try:
@@ -76,30 +99,6 @@ class Kikusui_PyVisa(Basic_PyVisa):
 
     def clear_error(self):
         self.inst.write("*CLS")
-
-    def connect_device(self, target_resource_instr):
-        try:
-            self.inst = self.rm.open_resource(target_resource_instr)
-            print(f'Connected -->  {self.inst.query("*IDN?")}')
-            return True
-
-        # except pyvisa.VisaIOError as error:
-        except:
-            # print(error)
-            print("Error 002: \n"
-                  "- Incorrect equipment used/ no connection detection.\n"
-                  "- Please make sure the equipment is properly connected")
-            return False
-
-    def disconnect_device(self):
-        try:
-            self.inst.close()
-            print("Session close")
-        except:
-            print("Error 003: Unable to close the session")
-
-    def display_session(self):
-        return self.inst.session
 
     def set_store_seq_definition(self, SEQ_NUMBER, SEQ_STEPS, SEQ_NAME, SEQ_POLARITY, SEQ_MODE, SEQ_LOOP):
         try:
@@ -195,7 +194,6 @@ class Kikusui_features:
         self.kikusui = Kikusui_PyVisa()
 
     def connect_equipment(self, instrument_address):
-        print(instrument_address)
         self.kikusui.connect_device(instrument_address)
         self.kikusui.turn_on_output(0)
 
