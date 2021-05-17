@@ -5,11 +5,9 @@ from PyQt5.QtGui import QDoubleValidator
 from UIpy import Main_ui
 from function_msgbox import msg_box_ok, msg_box_auto_close, msg_box_ok_cancel
 from Instrument_PyVisa import Basic_PyVisa, PS_Kikusui_PyVisa, Eload_Chroma_PyVisa, DMM_Keysight_PyVisa
-from threading import Thread
-import threading
 import re
 import time
-thread_stop = "FALSE"
+thread_running = False
 
 
 # Main UI for Fixed VIN, Variable Vout Test
@@ -167,13 +165,12 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         # Check input parameter
         self.check_input_parameter()
 
-        # --------------------------------------------------------------------------------------------------------
-        # Check existing thread
-        if not threading.activeCount() > 1:
+        # Set threading class
+        self.measurement_thread = QThread()
 
-            global thread_stop
-            thread_stop = "FALSE"
+        global thread_running
 
+        if not thread_running:
             if self.error_count <= 0:
                 self.eff_meas = Eff_Measurement(PS_USED=self.checkBox_ExtSupUsed.isChecked(), PS_ADD=self.PS_address,
                                                 PS_VSTART=self.PS_target_Vin, PS_VMAX=self.PS_limit_Vin,
@@ -190,18 +187,19 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                                                 DMM_COUT_ADD=self.DMM_COUT_address, OUTPUT_DIR=self.output_directory,
                                                 OUTPUT_NAME=self.output_filename,
                                                 EXP_PDF=self.checkBox_ExpToPdf.isChecked())
+                # Indicate thread started
 
-                # self.measurement_thread = QThread()
-                # self.eff_meas.moveToThread(self.measurement_thread)
-                # self.measurement_thread.started.connect(self.eff_meas.fixed_vin_meas)
-                # self.eff_meas.finished.connect(self.measurement_thread.quit)
-                # self.eff_meas.finished.connect(self.eff_meas.deleteLater)
-                # self.measurement_thread.finished.connect(self.measurement_thread.deleteLater)
-                # self.eff_meas.progress.connect(self.reportProgress)
-                # self.measurement_thread.start()
-                self.measurement_thread = Thread(target=self.eff_meas.fixed_vin_meas)
+                thread_running = True
+                msg_box_auto_close("Test started!!")
+                self.eff_meas.moveToThread(self.measurement_thread)
+                self.measurement_thread.started.connect(self.eff_meas.fixed_vin_meas)
+                self.eff_meas.finished.connect(self.measurement_thread.quit)
+                self.eff_meas.finished.connect(self.eff_meas.deleteLater)
+                self.measurement_thread.finished.connect(self.measurement_thread.deleteLater)
+                self.eff_meas.progress.connect(self.progress_bar_update)
+                self.eff_meas.error.connect(self.show_error)
                 self.measurement_thread.start()
-                self.progressBar.setProperty("value", 25)
+
             else:
                 msg_box_ok("Please fill up all the required field")
 
@@ -211,13 +209,16 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
 
     # Stop Test
     def stop_test(self):
-        if threading.activeCount() <= 1:
+
+        global thread_running
+        if not thread_running:
             msg_box_ok("Info:\n"
                        "- Test is not running.\n"
                        "- No test case to abort!")
         else:
-            global thread_stop
-            thread_stop = "TRUE"
+            thread_running = False
+            msg_box_ok("Test Stop!")
+            self.progressBar.setProperty("value", 0)
 
     # Check and verify input parameter
     def check_input_parameter(self):
@@ -329,8 +330,23 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
             self.lineEdit_Out_FileName.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
             self.output_filename = self.lineEdit_Out_FileName.text()
 
+    # Report Progress
+    def progress_bar_update(self, n):
+        self.progressBar.setProperty("value", int(n))
 
-class Eff_Measurement(FixedVIN_VarVOUT_UI):
+    # Report Error
+    def show_error(self, error_number, msg):
+        msg_box_ok(f"ERROR: Test stopped due to the following error!\n"
+                   f"- {msg}")
+
+
+class Eff_Measurement(QObject):
+
+    # Child Thread
+    finished = pyqtSignal()
+    progress = pyqtSignal(int)
+    error = pyqtSignal(int, str)
+
     def __init__(self, PS_USED=False, PS_ADD="", PS_VSTART=0, PS_VMAX=0, PS_VSTEP=0,PS_IMAX=0,
                  ELOAD_ADD="", ELOAD_START=0, ELOAD_MAX=0, ELOAD_STEP=0,
                  DMM_VIN_XUSED=False, DMM_VIN_ADD="",
@@ -338,8 +354,8 @@ class Eff_Measurement(FixedVIN_VarVOUT_UI):
                  DMM_VOUT_XUSED=False, DMM_VOUT_ADD="",
                  DMM_COUT_XUSED=False, DMM_COUT_ADD="",
                  OUTPUT_DIR="", OUTPUT_NAME="", EXP_PDF=True):
-        super().__init__()
 
+        super().__init__()
         self.ps_used = PS_USED
         self.ps_add = PS_ADD
         self.ps_vstart = PS_VSTART
@@ -369,16 +385,14 @@ class Eff_Measurement(FixedVIN_VarVOUT_UI):
         self.pin_calculated = []
         self.pout_calculated = []
         self.eff_calculated = []
-        self.progress = 0
 
         self.ext_power_supply = PS_Kikusui_PyVisa.Kikusui_features()  # Kikusui External Power Supply
         self.eload_command = Eload_Chroma_PyVisa.ELOAD_Chroma_features()    # Chroma ELOAD
 
     def fixed_vin_meas(self):
-        print("crash here")
-        # msg_box_ok("Print")
+        global thread_running
         error = 0
-        error_msg = []
+        error_msg = ""
 
         # connect ELOAD remotely
         self.eload_command.connect_equipment(target_resource_instr=self.eload_add)
@@ -401,64 +415,70 @@ class Eff_Measurement(FixedVIN_VarVOUT_UI):
             if self.status:
                 print(f"Turn on external power supply {self.ps_add}")
             else:
-                msg_box_ok(f"Error - function UI-> Eff_measurement -> fixed vin_meas: \n\n"
-                           f"Failed to turn on external power supply {self.ps_add}")
+                print(f"Error - function UI-> Eff_measurement -> fixed vin_meas: \n\n"
+                      f"Failed to turn on external power supply {self.ps_add}")
+                error += 1
+                error_msg = f"Failed to turn on external power supply {self.ps_add}"
 
         # Start looping test
-        for i in range(self.eload_steps_round):
+        if error == 0:
+            for i in range(self.eload_steps_round):
+                if thread_running:                                                    # Check if meas thread is running
 
-            if thread_stop == "FALSE":
-                # Configure eload current
-                eload_current = self.eload_istart + (self.eload_istep * i)
-                eload_set_status = self.eload_command.static_load(1, eload_current, "ON")
-                self.progress = ( i / self.eload_steps_round) * 100
-                self.progressBar.setProperty("value", 25)
-                self.repaint()
-                print(self.progress)
+                    # Configure ELoad current
+                    eload_current = self.eload_istart + (self.eload_istep * i)
+                    eload_set_status = self.eload_command.static_load(1, eload_current, "ON")
 
-                # If error on ELOAD
-                if not eload_set_status:
-                    error += 1
-                    error_msg.append("Unable to configure ELOAD")
-                    error_msg.append("asdaaca")
-                    print("ELoad not working properly")
+                    # Calculate measurement progress
+                    meas_progress = int((i / self.eload_steps_round) * 100)
+                    self.progress.emit(meas_progress)
+
+                    # If error on ELOAD
+                    if not eload_set_status:
+                        error += 1
+                        error_msg = "Unable to configure ELOAD"
+                        break
+
+                    time.sleep(3)                                                       # For load current to stabilize
+
+                    # Configure VIN measuring devices
+                    if not self.dmm_vin_xused:
+                        print("DMM_VIN_Used")
+                    else:
+                        self.vin_measured.append(self.ext_power_supply.read_output_supply()[0])
+
+                    # Configure IIN measuring devices
+                    if not self.dmm_cin_xused:
+                        print("DMM_CIN_Used")
+                    else:
+                        self.iin_measured.append(self.ext_power_supply.read_output_supply()[1])
+
+                    # Configure VOUT measuring devices
+                    if not self.dmm_cin_xused:
+                        print("DMM_VOUT_Used")
+                    else:
+                        self.vout_measured.append(self.eload_command.voltage_read())
+
+                    # Configure IOUT measuring devices
+                    if not self.dmm_cin_xused:
+                        print("DMM_COUT_Used")
+                    else:
+                        self.iout_measured.append(self.eload_command.current_read())
+
+                else:
+                    print("Thread Stop")
                     break
-                time.sleep(3)   # For load current to stabilize
-
-                # Configure VIN measuring devices
-                if not self.dmm_vin_xused:
-                    print("DMM_VIN_Used")
-                else:
-                    self.vin_measured.append(self.ext_power_supply.read_output_supply()[0])
-
-                # Configure IIN measuring devices
-                if not self.dmm_cin_xused:
-                    print("DMM_CIN_Used")
-                else:
-                    self.iin_measured.append(self.ext_power_supply.read_output_supply()[1])
-
-                # Configure VOUT measuring devices
-                if not self.dmm_cin_xused:
-                    print("DMM_VOUT_Used")
-                else:
-                    self.vout_measured.append(self.eload_command.voltage_read())
-
-                # Configure IOUT measuring devices
-                if not self.dmm_cin_xused:
-                    print("DMM_COUT_Used")
-                else:
-                    self.iout_measured.append(self.eload_command.current_read())
-
-            else:
-                print("Thread Stop")
-                break
 
         if error:
-            pass
+            self.error.emit(error, error_msg)
 
-        else:
-            self.eload_command.config_remote("OFF")
-            self.ext_power_supply.on_off_equipment(0)
+        self.eload_command.config_remote("OFF")
+        self.ext_power_supply.on_off_equipment(0)
+        self.finished.emit()
+        thread_running = False
+
+
+
 
 
 
