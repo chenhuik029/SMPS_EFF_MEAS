@@ -201,7 +201,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                 # self.measurement_thread.start()
                 self.measurement_thread = Thread(target=self.eff_meas.fixed_vin_meas)
                 self.measurement_thread.start()
-
+                self.progressBar.setProperty("value", 25)
             else:
                 msg_box_ok("Please fill up all the required field")
 
@@ -330,7 +330,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
             self.output_filename = self.lineEdit_Out_FileName.text()
 
 
-class Eff_Measurement(QObject):
+class Eff_Measurement(FixedVIN_VarVOUT_UI):
     def __init__(self, PS_USED=False, PS_ADD="", PS_VSTART=0, PS_VMAX=0, PS_VSTEP=0,PS_IMAX=0,
                  ELOAD_ADD="", ELOAD_START=0, ELOAD_MAX=0, ELOAD_STEP=0,
                  DMM_VIN_XUSED=False, DMM_VIN_ADD="",
@@ -369,18 +369,20 @@ class Eff_Measurement(QObject):
         self.pin_calculated = []
         self.pout_calculated = []
         self.eff_calculated = []
+        self.progress = 0
 
         self.ext_power_supply = PS_Kikusui_PyVisa.Kikusui_features()  # Kikusui External Power Supply
         self.eload_command = Eload_Chroma_PyVisa.ELOAD_Chroma_features()    # Chroma ELOAD
 
     def fixed_vin_meas(self):
         print("crash here")
-        msg_box_ok("Print")
+        # msg_box_ok("Print")
         error = 0
         error_msg = []
 
         # connect ELOAD remotely
         self.eload_command.connect_equipment(target_resource_instr=self.eload_add)
+        self.eload_command.config_remote("ON")
 
         # Count the required loops required
         self.eload_steps = (self.eload_imax - self.eload_istart) / self.eload_istep
@@ -406,10 +408,13 @@ class Eff_Measurement(QObject):
         for i in range(self.eload_steps_round):
 
             if thread_stop == "FALSE":
-
                 # Configure eload current
                 eload_current = self.eload_istart + (self.eload_istep * i)
                 eload_set_status = self.eload_command.static_load(1, eload_current, "ON")
+                self.progress = ( i / self.eload_steps_round) * 100
+                self.progressBar.setProperty("value", 25)
+                self.repaint()
+                print(self.progress)
 
                 # If error on ELOAD
                 if not eload_set_status:
@@ -418,15 +423,31 @@ class Eff_Measurement(QObject):
                     error_msg.append("asdaaca")
                     print("ELoad not working properly")
                     break
-
                 time.sleep(3)   # For load current to stabilize
-                print(eload_current)
-                print(i)
-                # # Configure measuring devices
-                # if not self.dmm_vin_xused:
-                #     print("DMM_VIN_Used")
-                # else:
-                #     print("PS_VIN_USED")
+
+                # Configure VIN measuring devices
+                if not self.dmm_vin_xused:
+                    print("DMM_VIN_Used")
+                else:
+                    self.vin_measured.append(self.ext_power_supply.read_output_supply()[0])
+
+                # Configure IIN measuring devices
+                if not self.dmm_cin_xused:
+                    print("DMM_CIN_Used")
+                else:
+                    self.iin_measured.append(self.ext_power_supply.read_output_supply()[1])
+
+                # Configure VOUT measuring devices
+                if not self.dmm_cin_xused:
+                    print("DMM_VOUT_Used")
+                else:
+                    self.vout_measured.append(self.eload_command.voltage_read())
+
+                # Configure IOUT measuring devices
+                if not self.dmm_cin_xused:
+                    print("DMM_COUT_Used")
+                else:
+                    self.iout_measured.append(self.eload_command.current_read())
 
             else:
                 print("Thread Stop")
@@ -434,6 +455,12 @@ class Eff_Measurement(QObject):
 
         if error:
             pass
+
+        else:
+            self.eload_command.config_remote("OFF")
+            self.ext_power_supply.on_off_equipment(0)
+
+
 
 
 
