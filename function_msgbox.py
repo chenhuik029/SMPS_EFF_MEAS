@@ -12,7 +12,7 @@ class MsgBoxAutoClose_UI(QDialog, MsgBoxAutoClose.Ui_msgboxautoclose):
     def msgbox_auto_close(self, input_text):
         self.timer = QtCore.QTimer(self)
         self.label.setText(input_text)
-        self.timer.setInterval(1500)
+        self.timer.setInterval(3000)
         self.timer.timeout.connect(self.changeContent)
         self.timer.start()
 

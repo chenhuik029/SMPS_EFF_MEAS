@@ -7,12 +7,12 @@ from function_msgbox import msg_box_ok, msg_box_auto_close, msg_box_ok_cancel
 from Instrument_PyVisa import Basic_PyVisa, PS_Kikusui_PyVisa, Eload_Chroma_PyVisa, DMM_Keysight_PyVisa
 from tkinter import filedialog
 import re
+import os
 import time
-import shutil
-from os import listdir
-from os.path import isfile, join
+import win32com.client
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Border, Side, Alignment
+from openpyxl.chart import ScatterChart, Reference, Series
 import tkinter as tk
 import datetime
 thread_running = False
@@ -351,7 +351,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
 
     # Report Error
     def show_error(self, error_number, msg):
-        msg_box_ok(f"ERROR: Test stopped due to the following error!\n"
+        msg_box_ok(f"ERROR: Stopped due to the following error!\n"
                    f"- {msg}")
         self.pushButton_StartTest.setEnabled(True)
 
@@ -359,7 +359,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
     def show_test_finish(self):
         global thread_running
         thread_running = False
-        msg_box_ok(f"Test completed! Please view the generated report.")
+        msg_box_ok(f"Test completed! Please view the generated report at {self.lineEdit_Out_Directory.text()}.")
         self.pushButton_StartTest.setEnabled(True)
 
     # Report generating report
@@ -523,8 +523,11 @@ class Eff_Measurement(QObject):
         else:
             self.pin_calculated, self.pout_calculated, self.eff_calculated = self.eff_calculation(self.vin_measured, self.iin_measured, self.vout_measured, self.iout_measured)
             self.generate_report.emit()
-            self.export_result_to_excel(self.vin_measured, self.iin_measured, self.vout_measured, self.iout_measured, self.pin_calculated, self.pout_calculated, self.eff_calculated, self.output_dir, self.output_name, self.exp_pdf)
-            self.finished.emit()
+            error = self.export_result_to_excel(self.vin_measured, self.iin_measured, self.vout_measured, self.iout_measured, self.pin_calculated, self.pout_calculated, self.eff_calculated, self.output_dir, self.output_name, self.exp_pdf)
+            if error:
+                self.error.emit(error, "Failed to generate report")
+            else:
+                self.finished.emit()
 
         self.eload_command.config_remote("OFF")
         self.eload_command.static_load(1, 0, "OFF")
@@ -538,9 +541,9 @@ class Eff_Measurement(QObject):
             input_power = meas_vin[i]*meas_iin[i]
             output_power = meas_vout[i]*meas_iout[i]
             efficiency = output_power/input_power * 100
-            InPwrCal.append(input_power)
-            OutPwrCal.append(output_power)
-            EffCal.append(efficiency)
+            InPwrCal.append("{:.3f}".format(input_power))
+            OutPwrCal.append("{:.3f}".format(output_power))
+            EffCal.append("{:.3f}".format(efficiency))
 
         return InPwrCal, OutPwrCal, EffCal
 
@@ -553,23 +556,39 @@ class Eff_Measurement(QObject):
             workbook = Workbook()
             ws = workbook.active
 
+            # Setting up table design parameter
             bold20Calibri = Font(size=20, italic=False, bold=True, name='Calibri')
             normal11Calibri = Font(size=11, italic=False, bold=False, name='Calibri')
             bold11Calibri = Font(size=11, italic=False, bold=True, name='Calibri')
+            thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
             ws.title = "PWR_EFF_TEST"
 
-            ws.cell(row=1, column=1, value="POWER SUPPLY EFFICIENCY MEASUREMENT (%) ACROSS VARIABLE LOAD CURRENT (A)").font = bold20Calibri
+            ws.cell(row=1, column=1, value="POWER SUPPLY EFFICIENCY MEASUREMENT (%) ACROSS OUTPUT LOAD CURRENT (A)").font = bold20Calibri
             ws.cell(row=3, column=1, value="TEST DATE:").font = normal11Calibri
             ws.cell(row=3, column=2, value=f"{datetime.date.today()}").font = normal11Calibri
             ws.cell(row=4, column=1, value="TEST NAME:").font = normal11Calibri
             ws.cell(row=4, column=2, value=f"{file_name}").font = normal11Calibri
             ws.cell(row=6, column=1, value='INPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=1).border = thin_border
+            ws.cell(row=6, column=1).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=2, value='INPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=2).border = thin_border
+            ws.cell(row=6, column=2).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=3, value='INPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=3).border = thin_border
+            ws.cell(row=6, column=3).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=4, value='OUTPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=4).border = thin_border
+            ws.cell(row=6, column=4).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=5, value='OUTPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=5).border = thin_border
+            ws.cell(row=6, column=5).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=6, value='OUTPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=6).border = thin_border
+            ws.cell(row=6, column=6).alignment = Alignment(horizontal='center')
             ws.cell(row=6, column=7, value='EFFICIENCY(%)').font = bold11Calibri
+            ws.cell(row=6, column=7).border = thin_border
+            ws.cell(row=6, column=7).alignment = Alignment(horizontal='center')
 
             ws.column_dimensions['A'].width = 20
             ws.column_dimensions['B'].width = 20
@@ -579,15 +598,105 @@ class Eff_Measurement(QObject):
             ws.column_dimensions['F'].width = 20
             ws.column_dimensions['G'].width = 20
 
+            # Insert values to table
+            for row in range(len(meas_iout)):
+                ws.cell(row=row+7, column=1, value=meas_vin[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=2, value=meas_iin[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=3, value=pin_calculated[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=4, value=meas_vout[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=5, value=meas_iout[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=6, value=pout_calculated[row]).font = normal11Calibri
+                ws.cell(row=row+7, column=7, value=eff_calculated[row]).font = normal11Calibri
+
+                for column in range(1, 8):
+                    ws.cell(row=row + 7, column=column).border = thin_border
+
+            # Create Chart
+            chart = ScatterChart()
+            chart.title = "POWER SUPPLY EFFICIENCY MEASUREMENT (%) ACROSS OUTPUT CURRENT (A)"
+            chart.style = 13
+            chart.x_axis.title = "Output Current (A)"
+            chart.x_axis.scaling.min = meas_iout[0]
+            chart.x_axis.scaling.max = meas_iout[len(meas_iout)-1]
+            chart.y_axis.title = "Efficiency (%)"
+            chart.y_axis.scaling.min = 0
+            chart.y_axis.scaling.max = 100
+
+            table_start_row = 7
+            table_end_row = len(meas_iout) + table_start_row - 1
+            xvalues = Reference(ws, min_col=5, min_row=table_start_row, max_row=table_end_row)
+            yvalues = Reference(ws, min_col=7, min_row=table_start_row, max_row=table_end_row)
+            series = Series(yvalues, xvalues)
+            chart.series.append(series)
+            chart.height = 13
+            chart.width = 25
+            ws.add_chart(chart, f"A{table_end_row + 3}")
             workbook.save(destination_excel_file)
             print("Excel Report generated")
+            error = False
+
+            if exp_to_pdf:
+                destination_pdf_file = f"{destination_path}{file_name}.pdf"
+                print_area = f'A1:G{table_end_row + 29}'
+                error = self.export_to_pdf(destination_excel_file, destination_pdf_file, print_area)
+
+            return error
 
         except:
             error = True
             print("Excel Report generation failed!!")
+            return error
+
+    def export_to_pdf(self, source_path, destination_path, print_area):
+        try:
+            o = win32com.client.Dispatch("Excel.Application")
+            o.Visible = False
+            o.DisplayAlerts = False
+            # o.ScreenUpdating = False
+            # o.EnableEvents = False
+            source_path = source_path.replace("/", "\\")
+            wb = o.Workbooks.Open(source_path)
+
+            ws_index_list = [1]
+            for index in ws_index_list:
+                ws = wb.Worksheets[index-1]
+                ws.PageSetup.Zoom = False
+                ws.PageSetup.FitToPagesWide = 1
+                ws.PageSetup.PrintArea = print_area
+            wb.Worksheets(ws_index_list).Select()
+
+            try:
+                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path)
+            except:                                         # To overwrite the same file name
+                os.remove(destination_path)
+                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path)
+
+            wb.Close(SaveChanges=False)
+            error = False
+            print("export to pdf succesful")
+
+        except:
+            error = True
+            print("Failed to generate pdf")
+        return error
 
 
+if __name__ == "__main__":
+    meas = Eff_Measurement()
 
+    file_dir = "D:/"
+    file_name = "test_1"
+    meas_vin = [1, 2, 3, 4, 5, 6, 7]
+    meas_vout = [1, 2, 3, 4, 5, 6, 7]
+    meas_iin = [1, 2, 3, 4, 5, 6, 7]
+    meas_iout = [1, 2, 3, 4, 5, 6, 7]
+    pin_calculated = [2, 3, 4, 5, 6, 7, 8]
+    pout_calculated = [2, 3, 4, 5, 6, 7, 8]
+    eff_calculated = [11, 12, 13, 14, 15, 16, 21]
+    exp_to_pdf = True
+
+    meas.export_result_to_excel(meas_vin, meas_iin, meas_vout, meas_iout,
+                               pin_calculated, pout_calculated, eff_calculated, file_dir, file_name, exp_to_pdf)
 
 
 
