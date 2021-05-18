@@ -50,6 +50,11 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.pushButton_StartTest.clicked.connect(self.start_test)
         self.pushButton_AbortTest.clicked.connect(self.stop_test)
         self.pushButton_Browse.clicked.connect(self.browse_directory)
+        self.pushButton_Refresh_Instrument.clicked.connect(self.refresh_instruments)
+
+    # Refresh Instruments
+    def refresh_instruments(self):
+        self.combobox_equipment_list()
 
     # Default configuration setting
     def default_configuration(self):
