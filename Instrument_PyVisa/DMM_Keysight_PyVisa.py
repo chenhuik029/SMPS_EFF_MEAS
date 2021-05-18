@@ -43,3 +43,9 @@ class Keysight_DMM(Basic_PyVisa):
         except:
             print(f'Unable to read IDC')
             return 999
+
+
+if __name__ == "__main__":
+    dmm = Keysight_DMM()
+    dmm.connect_equipment("USB0::0x0957::0x1C07::MY53206078::0::INSTR")
+    print(dmm.meas_vdc()[0])

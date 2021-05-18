@@ -5,8 +5,16 @@ from PyQt5.QtGui import QDoubleValidator
 from UIpy import Main_ui
 from function_msgbox import msg_box_ok, msg_box_auto_close, msg_box_ok_cancel
 from Instrument_PyVisa import Basic_PyVisa, PS_Kikusui_PyVisa, Eload_Chroma_PyVisa, DMM_Keysight_PyVisa
+from tkinter import filedialog
 import re
 import time
+import shutil
+from os import listdir
+from os.path import isfile, join
+from openpyxl import Workbook
+from openpyxl.styles import Font
+import tkinter as tk
+import datetime
 thread_running = False
 
 
@@ -41,6 +49,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.checkBox_ReadOutCur_ELoad.clicked.connect(self.DMM4_used_checked)
         self.pushButton_StartTest.clicked.connect(self.start_test)
         self.pushButton_AbortTest.clicked.connect(self.stop_test)
+        self.pushButton_Browse.clicked.connect(self.browse_directory)
 
     # Default configuration setting
     def default_configuration(self):
@@ -150,14 +159,14 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
 
     # Scan the equipment list
     def scan_equipment_list(self):
-        # self.equipment_list = self.list_instrument.list_connected_devices()
+        self.equipment_list = self.list_instrument.list_connected_devices()
         # To be deleted when actual instrument was used.
-        self.equipment_list = ('USB0::0x0B3E::0x1012::XF001773::0::INSTR',
-                               'ASRL4::INSTR', 'ASRL8::INSTR',
-                               'USB0::2391::1543::MY53020107::INSTR',
-                               'USB0::0x2A8D::0x1301::MY53218004::0::INSTR',
-                               'USB0::0x0699::0x0408::C014709::0::INSTR',
-                               'USB0::0x0AAD::0x0197::1329.7002k44-320094::0::INSTR')
+        # self.equipment_list = ('USB0::0x0B3E::0x1012::XF001773::0::INSTR',
+        #                        'ASRL4::INSTR', 'ASRL8::INSTR',
+        #                        'USB0::2391::1543::MY53020107::INSTR',
+        #                        'USB0::0x2A8D::0x1301::MY53218004::0::INSTR',
+        #                        'USB0::0x0699::0x0408::C014709::0::INSTR',
+        #                        'USB0::0x0AAD::0x0197::1329.7002k44-320094::0::INSTR')
 
     # Start Test
     def start_test(self):
@@ -172,6 +181,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
 
         if not thread_running:
             if self.error_count <= 0:
+                self.pushButton_StartTest.setEnabled(False)
                 self.eff_meas = Eff_Measurement(PS_USED=self.checkBox_ExtSupUsed.isChecked(), PS_ADD=self.PS_address,
                                                 PS_VSTART=self.PS_target_Vin, PS_VMAX=self.PS_limit_Vin,
                                                 PS_IMAX=self.PS_limit_Cin, ELOAD_ADD=self.ELoad_address,
@@ -193,11 +203,15 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                 msg_box_auto_close("Test started!!")
                 self.eff_meas.moveToThread(self.measurement_thread)
                 self.measurement_thread.started.connect(self.eff_meas.fixed_vin_meas)
+                self.eff_meas.finished.connect(self.show_test_finish)
                 self.eff_meas.finished.connect(self.measurement_thread.quit)
                 self.eff_meas.finished.connect(self.eff_meas.deleteLater)
-                self.measurement_thread.finished.connect(self.measurement_thread.deleteLater)
                 self.eff_meas.progress.connect(self.progress_bar_update)
+                self.eff_meas.generate_report.connect(self.show_generating_report)
                 self.eff_meas.error.connect(self.show_error)
+                self.eff_meas.error.connect(self.measurement_thread.quit)
+                self.eff_meas.error.connect(self.eff_meas.deleteLater)
+                self.measurement_thread.finished.connect(self.measurement_thread.deleteLater)
                 self.measurement_thread.start()
 
             else:
@@ -217,8 +231,9 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                        "- No test case to abort!")
         else:
             thread_running = False
-            msg_box_ok("Test Stop!")
+            # msg_box_ok("Test Stop!")
             self.progressBar.setProperty("value", 0)
+            self.pushButton_StartTest.setEnabled(True)
 
     # Check and verify input parameter
     def check_input_parameter(self):
@@ -338,12 +353,33 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
     def show_error(self, error_number, msg):
         msg_box_ok(f"ERROR: Test stopped due to the following error!\n"
                    f"- {msg}")
+        self.pushButton_StartTest.setEnabled(True)
+
+    # Report test finish
+    def show_test_finish(self):
+        global thread_running
+        thread_running = False
+        msg_box_ok(f"Test completed! Please view the generated report.")
+        self.pushButton_StartTest.setEnabled(True)
+
+    # Report generating report
+    def show_generating_report(self):
+        msg_box_auto_close(f"Generating Report")
+
+    # Browse directory
+    def browse_directory(self):
+        root = tk.Tk()
+        root.withdraw()
+        target_path = filedialog.askdirectory()
+        if target_path:
+            self.lineEdit_Out_Directory.setText(target_path)
 
 
 class Eff_Measurement(QObject):
 
     # Child Thread
     finished = pyqtSignal()
+    generate_report = pyqtSignal()
     progress = pyqtSignal(int)
     error = pyqtSignal(int, str)
 
@@ -388,6 +424,10 @@ class Eff_Measurement(QObject):
 
         self.ext_power_supply = PS_Kikusui_PyVisa.Kikusui_features()  # Kikusui External Power Supply
         self.eload_command = Eload_Chroma_PyVisa.ELOAD_Chroma_features()    # Chroma ELOAD
+        self.dmm_vin = DMM_Keysight_PyVisa.Keysight_DMM()
+        self.dmm_iin = DMM_Keysight_PyVisa.Keysight_DMM()
+        self.dmm_vout = DMM_Keysight_PyVisa.Keysight_DMM()
+        self.dmm_iout = DMM_Keysight_PyVisa.Keysight_DMM()
 
     def fixed_vin_meas(self):
         global thread_running
@@ -422,11 +462,14 @@ class Eff_Measurement(QObject):
 
         # Start looping test
         if error == 0:
-            for i in range(self.eload_steps_round):
+            for i in range(self.eload_steps_round + 1):
                 if thread_running:                                                    # Check if meas thread is running
 
                     # Configure ELoad current
-                    eload_current = self.eload_istart + (self.eload_istep * i)
+                    if self.eload_steps_round > self.eload_steps:
+                        eload_current = self.eload_imax
+                    else:
+                        eload_current = self.eload_istart + (self.eload_istep * i)
                     eload_set_status = self.eload_command.static_load(1, eload_current, "ON")
 
                     # Calculate measurement progress
@@ -443,39 +486,117 @@ class Eff_Measurement(QObject):
 
                     # Configure VIN measuring devices
                     if not self.dmm_vin_xused:
-                        print("DMM_VIN_Used")
+                        self.dmm_vin.connect_equipment(self.dmm_vin_add)
+                        self.vin_measured.append(self.dmm_vin.meas_vdc()[0])
                     else:
-                        self.vin_measured.append(self.ext_power_supply.read_output_supply()[0])
+                        self.vin_measured.append(self.ext_power_supply.read_output_supply()[0][0])
 
                     # Configure IIN measuring devices
                     if not self.dmm_cin_xused:
-                        print("DMM_CIN_Used")
+                        self.dmm_iin.connect_equipment(self.dmm_cin_add)
+                        self.iin_measured.append(self.dmm_iin.meas_idc()[0])
                     else:
-                        self.iin_measured.append(self.ext_power_supply.read_output_supply()[1])
+                        self.iin_measured.append(self.ext_power_supply.read_output_supply()[1][0])
 
                     # Configure VOUT measuring devices
-                    if not self.dmm_cin_xused:
-                        print("DMM_VOUT_Used")
+                    if not self.dmm_vout_xused:
+                        self.dmm_vout.connect_equipment(self.dmm_vout_add)
+                        self.vout_measured.append(self.dmm_vout.meas_vdc()[0])
                     else:
-                        self.vout_measured.append(self.eload_command.voltage_read())
+                        self.vout_measured.append(self.eload_command.voltage_read()[0])
 
                     # Configure IOUT measuring devices
-                    if not self.dmm_cin_xused:
-                        print("DMM_COUT_Used")
+                    if not self.dmm_cout_xused:
+                        self.dmm_iout.connect_equipment(self.dmm_cout_add)
+                        self.iout_measured.append(self.dmm_iout.meas_idc()[0])
                     else:
-                        self.iout_measured.append(self.eload_command.current_read())
+                        self.iout_measured.append(self.eload_command.current_read()[0])
 
                 else:
+                    error += 1
+                    error_msg = "Test Aborted!"
                     print("Thread Stop")
                     break
 
         if error:
             self.error.emit(error, error_msg)
+        else:
+            self.pin_calculated, self.pout_calculated, self.eff_calculated = self.eff_calculation(self.vin_measured, self.iin_measured, self.vout_measured, self.iout_measured)
+            self.generate_report.emit()
+            self.export_result_to_excel(self.vin_measured, self.iin_measured, self.vout_measured, self.iout_measured, self.pin_calculated, self.pout_calculated, self.eff_calculated, self.output_dir, self.output_name, self.exp_pdf)
+            self.finished.emit()
 
         self.eload_command.config_remote("OFF")
+        self.eload_command.static_load(1, 0, "OFF")
         self.ext_power_supply.on_off_equipment(0)
-        self.finished.emit()
-        thread_running = False
+
+    def eff_calculation(self, meas_vin, meas_iin, meas_vout, meas_iout):
+        InPwrCal = []
+        OutPwrCal = []
+        EffCal = []
+        for i in range(self.eload_steps_round + 1):
+            input_power = meas_vin[i]*meas_iin[i]
+            output_power = meas_vout[i]*meas_iout[i]
+            efficiency = output_power/input_power * 100
+            InPwrCal.append(input_power)
+            OutPwrCal.append(output_power)
+            EffCal.append(efficiency)
+
+        return InPwrCal, OutPwrCal, EffCal
+
+    def export_result_to_excel(self, meas_vin, meas_iin, meas_vout, meas_iout,
+                               pin_calculated, pout_calculated, eff_calculated, file_dir, file_name, exp_to_pdf):
+        destination_path = f"{file_dir}/"
+
+        try:
+            destination_excel_file = f"{destination_path}{file_name}.xlsx"
+            workbook = Workbook()
+            ws = workbook.active
+
+            bold20Calibri = Font(size=20, italic=False, bold=True, name='Calibri')
+            normal11Calibri = Font(size=11, italic=False, bold=False, name='Calibri')
+            bold11Calibri = Font(size=11, italic=False, bold=True, name='Calibri')
+            ws.title = "PWR_EFF_TEST"
+
+            ws.cell(row=1, column=1, value="POWER SUPPLY EFFICIENCY MEASUREMENT (%) ACROSS VARIABLE LOAD CURRENT (A)").font = bold20Calibri
+            ws.cell(row=3, column=1, value="TEST DATE:").font = normal11Calibri
+            ws.cell(row=3, column=2, value=f"{datetime.date.today()}").font = normal11Calibri
+            ws.cell(row=4, column=1, value="TEST NAME:").font = normal11Calibri
+            ws.cell(row=4, column=2, value=f"{file_name}").font = normal11Calibri
+            ws.cell(row=6, column=1, value='INPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=2, value='INPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=3, value='INPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=4, value='OUTPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=5, value='OUTPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=6, value='OUTPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=7, value='EFFICIENCY(%)').font = bold11Calibri
+
+            ws.column_dimensions['A'].width = 20
+            ws.column_dimensions['B'].width = 20
+            ws.column_dimensions['C'].width = 20
+            ws.column_dimensions['D'].width = 20
+            ws.column_dimensions['E'].width = 20
+            ws.column_dimensions['F'].width = 20
+            ws.column_dimensions['G'].width = 20
+
+            workbook.save(destination_excel_file)
+            print("Excel Report generated")
+
+        except:
+            error = True
+            print("Excel Report generation failed!!")
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
