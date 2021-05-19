@@ -1,8 +1,8 @@
 import math
-from PyQt5.QtWidgets import QMainWindow
+from PyQt5.QtWidgets import QMainWindow, QDialog
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
 from PyQt5.QtGui import QDoubleValidator
-from UIpy import Main_ui
+from UIpy import Main_ui, Support, Measurement_Setup
 from function_msgbox import msg_box_ok, msg_box_auto_close, msg_box_ok_cancel
 from Instrument_PyVisa import Basic_PyVisa, PS_Kikusui_PyVisa, Eload_Chroma_PyVisa, DMM_Keysight_PyVisa
 from tkinter import filedialog
@@ -15,7 +15,6 @@ from openpyxl.styles import Font, Border, Side, Alignment
 from openpyxl.chart import ScatterChart, Reference, Series
 import tkinter as tk
 import datetime
-import pathlib
 thread_running = False
 
 
@@ -37,6 +36,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.ELoad_ISTEP = 0
         self.ELoad_ISTART = 0
         self.ELoad_address = ""
+        self.Eload_channel = ""
         self.DMM_VIN_address = ""
         self.DMM_CIN_address = ""
         self.DMM_VOUT_address = ""
@@ -60,42 +60,38 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.lineEdit_PS_VIN.textChanged.connect(self.check_PS_input_value)
         self.lineEdit_PS_VIN_Limit.textChanged.connect(self.check_PS_input_value)
 
-    # Check Input value of ELoad
-    def check_eload_input_value(self):
-        if not self.lineEdit_ISTART.text() == "" and not self.lineEdit_IMAX.text() == "":
-            if float(self.lineEdit_ISTART.text()) > float(self.lineEdit_IMAX.text()):
-                msg_box_ok_cancel("Start load current must be SMALLER than Max current!!")
-                self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
-                return False
-        if not self.lineEdit_ISTEP.text() == "" and not self.lineEdit_IMAX.text() == "":
-            if float(self.lineEdit_ISTEP.text()) > float(self.lineEdit_IMAX.text()):
-                msg_box_ok_cancel("Step load current must be SMALLER than Max current!!")
-                self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
-                return False
-        else:
-            self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
-            self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
-            return True
+        self.actionSupported_Device.triggered.connect(self.supported_device)
+        self.actionExit.triggered.connect(self.close_app)
+        self.actionMeasurement_Setup.triggered.connect(self.measurement_setup)
+        self.actionSupport.triggered.connect(self.support)
 
-    # Check Input value of ELoad
-    def check_PS_input_value(self):
-        if not self.lineEdit_PS_VIN_Limit.text() == "" and not self.lineEdit_PS_VIN.text() == "":
-            if float(self.lineEdit_PS_VIN.text()) > float(self.lineEdit_PS_VIN_Limit.text()):
-                msg_box_ok_cancel("Suupply Voltage must be SMALLER than Supply Voltage Limit!!")
-                self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
-                return False
-        else:
-            self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
-            return True
+    # Exit the application
+    def close_app(self):
+        self.close()
 
-    # Refresh Instruments
-    def refresh_instruments(self):
-        self.combobox_equipment_list()
-        msg_box_auto_close("Searching equipment ... ...")
+    # Show Supported Device
+    def supported_device(self):
+        msg_box_ok("Supported Device:\n\n"
+                   "Power Supply: \n"
+                   "- Kikusui PBZ 20-20\n\n"
+                   "Digital Multimeter:\n"
+                   "- Keysight DMM\n\n"
+                   "Electronic Load\n"
+                   "- Chroma ELOAD")
+
+    # Show measurement setup diagram
+    def measurement_setup(self):
+        meas_setup_ui = MEAS_SETUP_GUIDE()
+        meas_setup_ui.exec_()
+
+    # Support Contact
+    def support(self):
+        support_ui = ABOUT_UI()
+        support_ui.exec_()
 
     # Default configuration setting
     def default_configuration(self):
-        self.Ext_Supply_used_checked(False)
+        self.Ext_Supply_used_checked()
         self.onlyFloat = QDoubleValidator()
         self.lineEdit_PS_VIN.setValidator(self.onlyFloat)
         self.lineEdit_PS_VIN_Limit.setValidator(self.onlyFloat)
@@ -104,16 +100,73 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.lineEdit_ISTEP.setValidator(self.onlyFloat)
         self.lineEdit_ISTART.setValidator(self.onlyFloat)
 
+    # Refresh Instruments
+    def refresh_instruments(self):
+        self.combobox_equipment_list()
+        msg_box_auto_close("Searching equipment ... ...")
+
+    # Check Input value of ELoad
+    def check_eload_input_value(self):
+        if not self.lineEdit_ISTART.text() == "" and not self.lineEdit_IMAX.text() == "":
+            if float(self.lineEdit_ISTART.text()) > float(self.lineEdit_IMAX.text()):
+                msg_box_ok("Start load current must be SMALLER than Max current!!")
+                self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+            else:
+                self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+                self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+                return True
+        if not self.lineEdit_ISTEP.text() == "" and not self.lineEdit_IMAX.text() == "":
+            if float(self.lineEdit_ISTEP.text()) > float(self.lineEdit_IMAX.text()):
+                msg_box_ok("Step load current must be SMALLER than Max current!!")
+                self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+            else:
+                self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+                self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+                return True
+
+    # Check Input value of ELoad
+    def check_PS_input_value(self):
+        if not self.lineEdit_PS_VIN_Limit.text() == "" and not self.lineEdit_PS_VIN.text() == "":
+            if float(self.lineEdit_PS_VIN.text()) > float(self.lineEdit_PS_VIN_Limit.text()):
+                msg_box_ok("Suupply Voltage must be SMALLER than Supply Voltage Limit!!")
+                self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+            else:
+                self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+                return True
+
     # Initial check box status
-    def Ext_Supply_used_checked(self, status=True):
-        self.comboBox_PS_Address.setEnabled(status)
-        self.lineEdit_PS_VIN.setEnabled(status)
-        self.lineEdit_PS_VIN_Limit.setEnabled(status)
-        self.lineEdit_PS_Cur_Limit.setEnabled(status)
-        self.checkBox_ReadIntCur_PSEquip.setEnabled(status)
-        self.label_23.setEnabled(status)
-        self.checkBox_ReadIntVol_PSEquip.setEnabled(status)
-        self.label_19.setEnabled(status)
+    def Ext_Supply_used_checked(self):
+        if self.checkBox_ExtSupUsed.isChecked():
+            self.comboBox_PS_Address.setEnabled(True)
+            self.lineEdit_PS_VIN.setEnabled(True)
+            self.lineEdit_PS_VIN_Limit.setEnabled(True)
+            self.lineEdit_PS_Cur_Limit.setEnabled(True)
+            self.checkBox_ReadIntCur_PSEquip.setEnabled(True)
+            self.label_23.setEnabled(True)
+            self.checkBox_ReadIntVol_PSEquip.setEnabled(True)
+            self.label_19.setEnabled(True)
+            if self.checkBox_ReadIntVol_PSEquip.isChecked():
+                self.comboBox_DMM_VI.setDisabled(True)
+            else:
+                self.comboBox_DMM_VI.setDisabled(False)
+            if self.checkBox_ReadIntCur_PSEquip.isChecked():
+                self.comboBox_DMM_CI.setDisabled(True)
+            else:
+                self.comboBox_DMM_CI.setDisabled(False)
+        else:
+            self.comboBox_PS_Address.setEnabled(False)
+            self.lineEdit_PS_VIN.setEnabled(False)
+            self.lineEdit_PS_VIN_Limit.setEnabled(False)
+            self.lineEdit_PS_Cur_Limit.setEnabled(False)
+            self.checkBox_ReadIntCur_PSEquip.setEnabled(False)
+            self.label_23.setEnabled(False)
+            self.checkBox_ReadIntVol_PSEquip.setEnabled(False)
+            self.label_19.setEnabled(False)
+            self.comboBox_DMM_VI.setDisabled(False)
+            self.comboBox_DMM_CI.setDisabled(False)
 
     # Initial check box status
     def DMM1_used_checked(self):
@@ -160,6 +213,10 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         if self.comboBox_ELoad_Address.currentIndex() < 0:
             self.comboBox_ELoad_Address.addItem("Please select the targeted instrument")
             self.comboBox_ELoad_Address.setCurrentIndex(0)
+
+        if self.comboBox_ELoad_CH.currentIndex() < 0:
+            self.comboBox_ELoad_CH.addItems(["Select a channel", '1', '2', '3', '4'])
+            self.comboBox_ELoad_CH.setCurrentIndex(0)
 
         if self.comboBox_DMM_VI.currentIndex() < 0:
             self.comboBox_DMM_VI.addItem("Please select the targeted instrument")
@@ -226,7 +283,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                 self.pushButton_StartTest.setEnabled(False)
                 self.eff_meas = Eff_Measurement(PS_USED=self.checkBox_ExtSupUsed.isChecked(), PS_ADD=self.PS_address,
                                                 PS_VSTART=self.PS_target_Vin, PS_VMAX=self.PS_limit_Vin,
-                                                PS_IMAX=self.PS_limit_Cin, ELOAD_ADD=self.ELoad_address,
+                                                PS_IMAX=self.PS_limit_Cin, ELOAD_ADD=self.ELoad_address, ELOAD_CHANNEL=self.Eload_channel,
                                                 ELOAD_START=self.ELoad_ISTART, ELOAD_MAX=self.ELoad_IMAX,
                                                 ELOAD_STEP=self.ELoad_ISTEP,
                                                 DMM_VIN_XUSED=self.checkBox_ReadIntVol_PSEquip.isChecked(),
@@ -318,6 +375,11 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         # Check Eload Address Input
         if self.comboBox_ELoad_Address.currentIndex() > 0:
             self.ELoad_address = self.comboBox_ELoad_Address.currentText()
+        else:
+            self.error_count += 1
+
+        if self.comboBox_ELoad_CH.currentIndex() > 0:
+            self.Eload_channel = int(self.comboBox_ELoad_CH.currentText())
         else:
             self.error_count += 1
 
@@ -426,7 +488,7 @@ class Eff_Measurement(QObject):
     error = pyqtSignal(int, str)
 
     def __init__(self, PS_USED=False, PS_ADD="", PS_VSTART=0, PS_VMAX=0, PS_VSTEP=0,PS_IMAX=0,
-                 ELOAD_ADD="", ELOAD_START=0, ELOAD_MAX=0, ELOAD_STEP=0,
+                 ELOAD_ADD="", ELOAD_CHANNEL=1, ELOAD_START=0, ELOAD_MAX=0, ELOAD_STEP=0,
                  DMM_VIN_XUSED=False, DMM_VIN_ADD="",
                  DMM_CIN_XUSED=False, DMM_CIN_ADD="",
                  DMM_VOUT_XUSED=False, DMM_VOUT_ADD="",
@@ -441,6 +503,7 @@ class Eff_Measurement(QObject):
         self.ps_vstep = PS_VSTEP
         self.ps_imax = PS_IMAX
         self.eload_add = ELOAD_ADD
+        self.eload_channel = ELOAD_CHANNEL
         self.eload_istart = ELOAD_START
         self.eload_imax = ELOAD_MAX
         self.eload_istep = ELOAD_STEP
@@ -512,7 +575,7 @@ class Eff_Measurement(QObject):
                         eload_current = self.eload_imax
                     else:
                         eload_current = self.eload_istart + (self.eload_istep * i)
-                    eload_set_status = self.eload_command.static_load(1, eload_current, "ON")
+                    eload_set_status = self.eload_command.static_load(self.eload_channel, eload_current, "ON")
 
                     # Calculate measurement progress
                     meas_progress = int((i / self.eload_steps_round) * 100)
@@ -729,6 +792,23 @@ class Eff_Measurement(QObject):
             o.Workbooks.Close()
 
         return error
+
+
+class ABOUT_UI(QDialog, Support.Ui_Dialog_support):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+        self.label_email.setText("<a href='mailto:chenhui_k029@hotmail.com?"
+                                 "subject=Support for Automated SMPS Efficiency Test&"
+                                 "body=Hi support, \nI would like to seek for help on ..\n'"
+                                 ">Click here to sent an email for support regarding the control interface.")
+        self.label_email.setOpenExternalLinks(True)
+
+
+class MEAS_SETUP_GUIDE(QDialog, Measurement_Setup.Ui_Dialog_Measurement_Setup):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
 
 
 if __name__ == "__main__":
