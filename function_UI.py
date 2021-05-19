@@ -15,6 +15,7 @@ from openpyxl.styles import Font, Border, Side, Alignment
 from openpyxl.chart import ScatterChart, Reference, Series
 import tkinter as tk
 import datetime
+import pathlib
 thread_running = False
 
 
@@ -52,9 +53,45 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
         self.pushButton_Browse.clicked.connect(self.browse_directory)
         self.pushButton_Refresh_Instrument.clicked.connect(self.refresh_instruments)
 
+        self.lineEdit_IMAX.textChanged.connect(self.check_eload_input_value)
+        self.lineEdit_ISTART.textChanged.connect(self.check_eload_input_value)
+        self.lineEdit_ISTEP.textChanged.connect(self.check_eload_input_value)
+
+        self.lineEdit_PS_VIN.textChanged.connect(self.check_PS_input_value)
+        self.lineEdit_PS_VIN_Limit.textChanged.connect(self.check_PS_input_value)
+
+    # Check Input value of ELoad
+    def check_eload_input_value(self):
+        if not self.lineEdit_ISTART.text() == "" and not self.lineEdit_IMAX.text() == "":
+            if float(self.lineEdit_ISTART.text()) > float(self.lineEdit_IMAX.text()):
+                msg_box_ok_cancel("Start load current must be SMALLER than Max current!!")
+                self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+        if not self.lineEdit_ISTEP.text() == "" and not self.lineEdit_IMAX.text() == "":
+            if float(self.lineEdit_ISTEP.text()) > float(self.lineEdit_IMAX.text()):
+                msg_box_ok_cancel("Step load current must be SMALLER than Max current!!")
+                self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+        else:
+            self.lineEdit_ISTART.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+            self.lineEdit_ISTEP.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+            return True
+
+    # Check Input value of ELoad
+    def check_PS_input_value(self):
+        if not self.lineEdit_PS_VIN_Limit.text() == "" and not self.lineEdit_PS_VIN.text() == "":
+            if float(self.lineEdit_PS_VIN.text()) > float(self.lineEdit_PS_VIN_Limit.text()):
+                msg_box_ok_cancel("Suupply Voltage must be SMALLER than Supply Voltage Limit!!")
+                self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 10);}")
+                return False
+        else:
+            self.lineEdit_PS_VIN.setStyleSheet("QLineEdit{background-color: rgb(255, 255, 255);}")
+            return True
+
     # Refresh Instruments
     def refresh_instruments(self):
         self.combobox_equipment_list()
+        msg_box_auto_close("Searching equipment ... ...")
 
     # Default configuration setting
     def default_configuration(self):
@@ -455,7 +492,7 @@ class Eff_Measurement(QObject):
             self.ext_power_supply.connect_equipment(self.ps_add)
             self.ext_power_supply.set_cv_output(mode='CV', polar='UNIP', out_vol=self.ps_vstart, out_vol_lim=self.ps_vmax, out_cur_lim=self.ps_imax)
             self.status = self.ext_power_supply.on_off_equipment(1)
-            time.sleep(3)
+            time.sleep(1)
 
             if self.status:
                 print(f"Turn on external power supply {self.ps_add}")
@@ -554,10 +591,14 @@ class Eff_Measurement(QObject):
 
     def export_result_to_excel(self, meas_vin, meas_iin, meas_vout, meas_iout,
                                pin_calculated, pout_calculated, eff_calculated, file_dir, file_name, exp_to_pdf):
+
         destination_path = f"{file_dir}/"
+        destination_excel_file = f"{destination_path}{file_name}.xlsx"
+
+        table_start_row = 7
+        table_end_row = len(meas_iout) + table_start_row - 1
 
         try:
-            destination_excel_file = f"{destination_path}{file_name}.xlsx"
             workbook = Workbook()
             ws = workbook.active
 
@@ -573,25 +614,25 @@ class Eff_Measurement(QObject):
             ws.cell(row=3, column=2, value=f"{datetime.date.today()}").font = normal11Calibri
             ws.cell(row=4, column=1, value="TEST NAME:").font = normal11Calibri
             ws.cell(row=4, column=2, value=f"{file_name}").font = normal11Calibri
-            ws.cell(row=6, column=1, value='INPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=1, value='INPUT VOLTAGE (V)').font = bold11Calibri
             ws.cell(row=6, column=1).border = thin_border
             ws.cell(row=6, column=1).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=2, value='INPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=2, value='INPUT CURRENT (A)').font = bold11Calibri
             ws.cell(row=6, column=2).border = thin_border
             ws.cell(row=6, column=2).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=3, value='INPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=3, value='INPUT POWER (W)').font = bold11Calibri
             ws.cell(row=6, column=3).border = thin_border
             ws.cell(row=6, column=3).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=4, value='OUTPUT VOLTAGE(V)').font = bold11Calibri
+            ws.cell(row=6, column=4, value='OUTPUT VOLTAGE (V)').font = bold11Calibri
             ws.cell(row=6, column=4).border = thin_border
             ws.cell(row=6, column=4).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=5, value='OUTPUT CURRENT(A)').font = bold11Calibri
+            ws.cell(row=6, column=5, value='OUTPUT CURRENT (A)').font = bold11Calibri
             ws.cell(row=6, column=5).border = thin_border
             ws.cell(row=6, column=5).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=6, value='OUTPUT POWER(W)').font = bold11Calibri
+            ws.cell(row=6, column=6, value='OUTPUT POWER (W)').font = bold11Calibri
             ws.cell(row=6, column=6).border = thin_border
             ws.cell(row=6, column=6).alignment = Alignment(horizontal='center')
-            ws.cell(row=6, column=7, value='EFFICIENCY(%)').font = bold11Calibri
+            ws.cell(row=6, column=7, value='EFFICIENCY (%)').font = bold11Calibri
             ws.cell(row=6, column=7).border = thin_border
             ws.cell(row=6, column=7).alignment = Alignment(horizontal='center')
 
@@ -605,16 +646,16 @@ class Eff_Measurement(QObject):
 
             # Insert values to table
             for row in range(len(meas_iout)):
-                ws.cell(row=row+7, column=1, value=meas_vin[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=2, value=meas_iin[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=3, value=pin_calculated[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=4, value=meas_vout[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=5, value=meas_iout[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=6, value=pout_calculated[row]).font = normal11Calibri
-                ws.cell(row=row+7, column=7, value=eff_calculated[row]).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=1, value=float(meas_vin[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=2, value=float(meas_iin[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=3, value=float(pin_calculated[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=4, value=float(meas_vout[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=5, value=float(meas_iout[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=6, value=float(pout_calculated[row])).font = normal11Calibri
+                ws.cell(row=row+table_start_row, column=7, value=float(eff_calculated[row])).font = normal11Calibri
 
                 for column in range(1, 8):
-                    ws.cell(row=row + 7, column=column).border = thin_border
+                    ws.cell(row=row + table_start_row, column=column).border = thin_border
 
             # Create Chart
             chart = ScatterChart()
@@ -627,8 +668,6 @@ class Eff_Measurement(QObject):
             chart.y_axis.scaling.min = 0
             chart.y_axis.scaling.max = 100
 
-            table_start_row = 7
-            table_end_row = len(meas_iout) + table_start_row - 1
             xvalues = Reference(ws, min_col=5, min_row=table_start_row, max_row=table_end_row)
             yvalues = Reference(ws, min_col=7, min_row=table_start_row, max_row=table_end_row)
             series = Series(yvalues, xvalues)
@@ -640,29 +679,33 @@ class Eff_Measurement(QObject):
             print("Excel Report generated")
             error = False
 
-            if exp_to_pdf:
-                destination_pdf_file = f"{destination_path}{file_name}.pdf"
-                print_area = f'A1:G{table_end_row + 29}'
-                error = self.export_to_pdf(destination_excel_file, destination_pdf_file, print_area)
-
-            return error
-
         except:
             error = True
             print("Excel Report generation failed!!")
-            return error
+
+        if exp_to_pdf and not error:
+            destination_pdf_file = f"{destination_path}{file_name}.pdf"
+            print_area = f'A1:G{table_end_row + 29}'
+            error = self.export_to_pdf(destination_excel_file, destination_pdf_file, print_area)
+            if error:
+                print("PDF report generation failed!")
+                return error
+            else:
+                print("PDF report generation succesful!")
+        return error
 
     def export_to_pdf(self, source_path, destination_path, print_area):
-        try:
-            o = win32com.client.Dispatch("Excel.Application")
-            o.Visible = False
-            o.DisplayAlerts = False
-            # o.ScreenUpdating = False
-            # o.EnableEvents = False
-            source_path = source_path.replace("/", "\\")
-            wb = o.Workbooks.Open(source_path)
+        o = win32com.client.Dispatch("Excel.Application")
+        o.Visible = False
+        o.DisplayAlerts = False
+        source_path = r'{}'.format(source_path.replace("/", "\\"))
+        destination_path_2 = r'{}'.format(destination_path.replace("/", "\\"))
 
+        try:
             ws_index_list = [1]
+            wb = o.Workbooks.Open(source_path)
+            time.sleep(3)                       # Delay for workbook to open
+
             for index in ws_index_list:
                 ws = wb.Worksheets[index-1]
                 ws.PageSetup.Zoom = False
@@ -671,25 +714,26 @@ class Eff_Measurement(QObject):
             wb.Worksheets(ws_index_list).Select()
 
             try:
-                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path)
+                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path_2)
             except:                                         # To overwrite the same file name
                 os.remove(destination_path)
-                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path)
+                wb.ActiveSheet.ExportAsFixedFormat(0, destination_path_2)
 
-            wb.Close(SaveChanges=False)
+            print("export to pdf succesfully")
             error = False
-            print("export to pdf succesful")
-
+            wb.Close(SaveChanges=False)
         except:
             error = True
             print("Failed to generate pdf")
+        finally:
+            o.Workbooks.Close()
+
         return error
 
 
 if __name__ == "__main__":
     meas = Eff_Measurement()
-
-    file_dir = "D:/"
+    file_dir = "D:\OneDrive - Continental AG"
     file_name = "test_1"
     meas_vin = [1, 2, 3, 4, 5, 6, 7]
     meas_vout = [1, 2, 3, 4, 5, 6, 7]
