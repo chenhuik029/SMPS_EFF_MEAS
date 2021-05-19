@@ -65,7 +65,6 @@ class Ui_Dialog_support(object):
 "For any support, please contact the following provided contact."))
         self.label_email.setText(_translate("Dialog_support", "<html><head/><body><p><a href=\"https://outlook.live.com/mail/0/inbox\"><span style=\" text-decoration: underline; color:#0000ff;\">If there is any technical support or further understanding, please contact: chenhui_k029@hotmail.com"))
         self.label.setText(_translate("Dialog_support", "Created @2021/5 version 1.0"))
-import equipment_pic_rc
 
 
 if __name__ == "__main__":
