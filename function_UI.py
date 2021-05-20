@@ -308,6 +308,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                 self.eff_meas.progress.connect(self.progress_bar_update)
                 self.eff_meas.generate_report.connect(self.show_generating_report)
                 self.eff_meas.error.connect(self.show_error)
+                self.eff_meas.error.connect(self.stop_test)
                 self.eff_meas.error.connect(self.measurement_thread.quit)
                 self.eff_meas.error.connect(self.eff_meas.deleteLater)
                 self.measurement_thread.finished.connect(self.measurement_thread.deleteLater)
@@ -591,29 +592,73 @@ class Eff_Measurement(QObject):
 
                     # Configure VIN measuring devices
                     if not self.dmm_vin_xused:
-                        self.dmm_vin.connect_equipment(self.dmm_vin_add)
-                        self.vin_measured.append(self.dmm_vin.meas_vdc()[0])
+                        vdc_in_dmm_connect = self.dmm_vin.connect_equipment(self.dmm_vin_add)
+                        if vdc_in_dmm_connect:
+                            vdc_in_read = self.dmm_vin.meas_vdc()[0]
+                            if vdc_in_read != 999:
+                                self.vin_measured.append(vdc_in_read)
+                            else:
+                                error += 1
+                                error_msg = "DMM 1 error! Please check DMM 1 connection ...\n\nTest ABORTED."
+                                break
+                        else:
+                            error += 1
+                            error_msg = "DMM 1 error! Please check DMM 1 connection ...\n\nTest ABORTED."
+                            break
                     else:
                         self.vin_measured.append(self.ext_power_supply.read_output_supply()[0][0])
 
                     # Configure IIN measuring devices
                     if not self.dmm_cin_xused:
-                        self.dmm_iin.connect_equipment(self.dmm_cin_add)
-                        self.iin_measured.append(self.dmm_iin.meas_idc()[0])
+                        idc_in_dmm_connect = self.dmm_iin.connect_equipment(self.dmm_cin_add)
+                        if idc_in_dmm_connect:
+                            idc_in_read = self.dmm_iin.meas_idc()[0]
+                            if idc_in_read != 999:
+                                self.iin_measured.append(idc_in_read)
+                            else:
+                                error += 1
+                                error_msg = "DMM 2 error! Please check DMM 2 connection ...\n\nTest ABORTED."
+                                break
+                        else:
+                            error += 1
+                            error_msg = "DMM 2 error! Please check DMM 2 connection ...\n\nTest ABORTED."
+                            break
                     else:
                         self.iin_measured.append(self.ext_power_supply.read_output_supply()[1][0])
 
                     # Configure VOUT measuring devices
                     if not self.dmm_vout_xused:
-                        self.dmm_vout.connect_equipment(self.dmm_vout_add)
-                        self.vout_measured.append(self.dmm_vout.meas_vdc()[0])
+                        vdc_out_dmm_connect = self.dmm_vout.connect_equipment(self.dmm_vout_add)
+                        if vdc_out_dmm_connect:
+                            vdc_out_read = self.dmm_vout.meas_vdc()[0]
+                            if vdc_out_read != 999:
+                                self.vout_measured.append(vdc_out_read)
+                            else:
+                                error += 1
+                                error_msg = "DMM 3 error! Please check DMM 3 connection ...\n\nTest ABORTED."
+                                break
+                        else:
+                            error += 1
+                            error_msg = "DMM 3 error! Please check DMM 3 connection ...\n\nTest ABORTED."
+                            break
                     else:
                         self.vout_measured.append(self.eload_command.voltage_read()[0])
 
                     # Configure IOUT measuring devices
                     if not self.dmm_cout_xused:
-                        self.dmm_iout.connect_equipment(self.dmm_cout_add)
-                        self.iout_measured.append(self.dmm_iout.meas_idc()[0])
+                        idc_out_dmm_connect = self.dmm_iout.connect_equipment(self.dmm_cout_add)
+                        if idc_out_dmm_connect:
+                            idc_out_read = self.dmm_iout.meas_idc()[0]
+                            if idc_out_read != 999:
+                                self.iout_measured.append(idc_out_read)
+                            else:
+                                error += 1
+                                error_msg = "DMM 4 error! Please check DMM 4 connection ...\n\nTest ABORTED."
+                                break
+                        else:
+                            error += 1
+                            error_msg = "DMM 4 error! Please check DMM 4 connection ...\n\nTest ABORTED."
+                            break
                     else:
                         self.iout_measured.append(self.eload_command.current_read()[0])
 
@@ -721,7 +766,7 @@ class Eff_Measurement(QObject):
                     ws.cell(row=row + table_start_row, column=column).border = thin_border
 
             # Create Chart
-            chart = ScatterChart()
+            chart = ScatterChart(scatterStyle='smooth')
             chart.title = "POWER SUPPLY EFFICIENCY MEASUREMENT (%) ACROSS OUTPUT CURRENT (A)"
             chart.style = 13
             chart.x_axis.title = "Output Current (A)"
@@ -730,6 +775,7 @@ class Eff_Measurement(QObject):
             chart.y_axis.title = "Efficiency (%)"
             chart.y_axis.scaling.min = 0
             chart.y_axis.scaling.max = 100
+            # chart.scatterStyle = 'smooth'
 
             xvalues = Reference(ws, min_col=5, min_row=table_start_row, max_row=table_end_row)
             yvalues = Reference(ws, min_col=7, min_row=table_start_row, max_row=table_end_row)

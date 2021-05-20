@@ -34,7 +34,7 @@ class Keysight_DMM(Basic_PyVisa):
             return read_vdc
         except:
             print(f'Unable to read VDC')
-            return 999
+            return [999]
 
     def meas_idc(self):
         try:
@@ -42,7 +42,7 @@ class Keysight_DMM(Basic_PyVisa):
             return read_idc
         except:
             print(f'Unable to read IDC')
-            return 999
+            return [999]
 
 
 if __name__ == "__main__":
