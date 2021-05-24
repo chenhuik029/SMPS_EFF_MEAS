@@ -1,4 +1,5 @@
 from Instrument_PyVisa.Basic_PyVisa import Basic_PyVisa
+import time
 
 
 # Only Chroma ELOAD related PyVISA command
@@ -31,7 +32,7 @@ class ELoad_Chroma_Core_PyVisa(Basic_PyVisa):
 
     def config_channel(self, channel=1):
         try:
-            self.Eload_inst.write(f"CHAN{channel}")
+            self.Eload_inst.write(f"CHAN {channel}")
             return True
         except:
             print(f"Unable to configure ELOAD channel {channel}")
@@ -96,4 +97,12 @@ class ELOAD_Chroma_features(ELoad_Chroma_Core_PyVisa):
         load_current = self.config_current(current=load_current)
         on_off = self.config_onoff(status=on_off)
         return channel and load_current and on_off
+
+
+if __name__ == "__main__":
+    eload = ELOAD_Chroma_features()
+    eload.connect_equipment('ASRL8::INSTR')
+    eload.static_load(3, 0.3, 1)
+    time.sleep(2)
+    eload.static_load(3, 0.3, 0)
 

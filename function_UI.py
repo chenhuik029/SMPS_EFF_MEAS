@@ -283,7 +283,7 @@ class FixedVIN_VarVOUT_UI(QMainWindow, Main_ui.Ui_MainWindow):
                 self.pushButton_StartTest.setEnabled(False)
                 self.eff_meas = Eff_Measurement(PS_USED=self.checkBox_ExtSupUsed.isChecked(), PS_ADD=self.PS_address,
                                                 PS_VSTART=self.PS_target_Vin, PS_VMAX=self.PS_limit_Vin,
-                                                PS_IMAX=self.PS_limit_Cin, ELOAD_ADD=self.ELoad_address, ELOAD_CHANNEL=self.Eload_channel,
+                                                PS_IMAX=self.PS_limit_Cin, ELOAD_ADD=self.ELoad_address, ELOAD_CHANNEL=int(self.Eload_channel),
                                                 ELOAD_START=self.ELoad_ISTART, ELOAD_MAX=self.ELoad_IMAX,
                                                 ELOAD_STEP=self.ELoad_ISTEP,
                                                 DMM_VIN_XUSED=self.checkBox_ReadIntVol_PSEquip.isChecked(),
