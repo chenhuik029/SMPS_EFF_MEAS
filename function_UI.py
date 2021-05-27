@@ -549,7 +549,7 @@ class Eff_Measurement(QObject):
         self.eload_steps_round = math.floor(self.eload_steps)
 
         if self.eload_steps > self.eload_steps_round:
-            self.eload_steps_round += 1
+            self.eload_steps_round_iteration = self.eload_steps_round + 1
 
         # Turn on external power supply if required
         if self.ps_used:
@@ -568,7 +568,7 @@ class Eff_Measurement(QObject):
 
         # Start looping test
         if error == 0:
-            for i in range(self.eload_steps_round + 1):
+            for i in range(self.eload_steps_round_iteration + 1):
                 if thread_running:                                                    # Check if meas thread is running
 
                     # Configure ELoad current
@@ -579,7 +579,7 @@ class Eff_Measurement(QObject):
                     eload_set_status = self.eload_command.static_load(self.eload_channel, eload_current, "ON")
 
                     # Calculate measurement progress
-                    meas_progress = int((i / self.eload_steps_round) * 100)
+                    meas_progress = int((i / self.eload_steps_round_iteration) * 100)
                     self.progress.emit(meas_progress)
 
                     # If error on ELOAD
@@ -687,7 +687,7 @@ class Eff_Measurement(QObject):
         InPwrCal = []
         OutPwrCal = []
         EffCal = []
-        for i in range(self.eload_steps_round + 1):
+        for i in range(self.eload_steps_round_iteration + 1):
             input_power = meas_vin[i]*meas_iin[i]
             output_power = meas_vout[i]*meas_iout[i]
             efficiency = output_power/input_power * 100
