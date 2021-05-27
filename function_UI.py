@@ -550,6 +550,8 @@ class Eff_Measurement(QObject):
 
         if self.eload_steps > self.eload_steps_round:
             self.eload_steps_round_iteration = self.eload_steps_round + 1
+        else:
+            self.eload_steps_round_iteration = self.eload_steps_round
 
         # Turn on external power supply if required
         if self.ps_used:
